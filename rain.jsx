@@ -151,16 +151,22 @@ export const updateState = (event, state) => {
   }
 }
 
-export const render = (props) => {
-  const dispatch = props.dispatch
-  const locations = props.locations || DEFAULT_LOCATIONS
-  const windowDays = props.windowDays || 14
-  const values = props.values || {}
-  const errors = props.errors || {}
-  const showSettings = !!props.showSettings
-  const query = props.query || ''
-  const results = props.results || []
-  const position = props.position
+export const render = (a, b) => {
+  // Übersicht has historically called render two ways: render(state, dispatch)
+  // and render({...state, dispatch}). Handle both so the widget works across
+  // versions.
+  const state = (a && typeof a === 'object') ? a : {}
+  const dispatch = (typeof b === 'function') ? b
+                 : (typeof state.dispatch === 'function') ? state.dispatch
+                 : () => {}
+  const locations = state.locations || DEFAULT_LOCATIONS
+  const windowDays = state.windowDays || 14
+  const values = state.values || {}
+  const errors = state.errors || {}
+  const showSettings = !!state.showSettings
+  const query = state.query || ''
+  const results = state.results || []
+  const position = state.position
   const win = WINDOWS.find(w => w.days === windowDays) || WINDOWS[2]
 
   const applyPosition = (el) => {
