@@ -20,14 +20,15 @@ const loadConfig = () => {
       if (cfg.locations && cfg.locations.length) return cfg
     }
   } catch (e) {}
-  return { locations: DEFAULT_LOCATIONS, windowDays: 14 }
+  return { locations: DEFAULT_LOCATIONS, windowDays: 14, position: null }
 }
 
 const saveConfig = (state) => {
   try {
     localStorage.setItem(CONFIG_KEY, JSON.stringify({
       locations: state.locations,
-      windowDays: state.windowDays
+      windowDays: state.windowDays,
+      position: state.position || null
     }))
   } catch (e) {}
 }
@@ -90,6 +91,7 @@ export const refreshFrequency = 6 * 60 * 60 * 1000
 export const initialState = {
   locations: _initial.locations,
   windowDays: _initial.windowDays,
+  position: _initial.position || null,
   values: {},
   errors: {},
   showSettings: false,
@@ -140,6 +142,10 @@ export const updateState = (event, state) => {
       })
       saveConfig(next); return next
     }
+    case 'SET_POSITION': {
+      const next = Object.assign({}, state, { position: event.position })
+      saveConfig(next); return next
+    }
     default:
       return state
   }
@@ -154,7 +160,44 @@ export const render = (props) => {
   const showSettings = !!props.showSettings
   const query = props.query || ''
   const results = props.results || []
+  const position = props.position
   const win = WINDOWS.find(w => w.days === windowDays) || WINDOWS[2]
+
+  const applyPosition = (el) => {
+    if (!el || !position) return
+    const wrapper = el.parentElement
+    if (!wrapper) return
+    if (position.left != null) { wrapper.style.left = position.left + 'px'; wrapper.style.right = 'auto' }
+    if (position.top != null) wrapper.style.top = position.top + 'px'
+  }
+
+  const onDragStart = (e) => {
+    if (e.button !== 0) return
+    if (e.target && e.target.closest && e.target.closest('.iconBtn')) return
+    const card = e.currentTarget.closest('.card')
+    const wrapper = card && card.parentElement
+    if (!wrapper) return
+    e.preventDefault()
+    const startX = e.clientX
+    const startY = e.clientY
+    const rect = wrapper.getBoundingClientRect()
+    let finalLeft = rect.left
+    let finalTop = rect.top
+    const onMove = (ev) => {
+      finalLeft = rect.left + (ev.clientX - startX)
+      finalTop = rect.top + (ev.clientY - startY)
+      wrapper.style.left = finalLeft + 'px'
+      wrapper.style.right = 'auto'
+      wrapper.style.top = finalTop + 'px'
+    }
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      dispatch({ type: 'SET_POSITION', position: { left: finalLeft, top: finalTop } })
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
 
   const onWindow = (days) => {
     dispatch({ type: 'SET_WINDOW', days })
@@ -194,8 +237,8 @@ export const render = (props) => {
   }
 
   return (
-    <div className="card">
-      <div className="header">
+    <div className="card" ref={applyPosition}>
+      <div className="header" onMouseDown={onDragStart} title="Drag to move">
         <span className="title">{drop}Precipitation · past {win.label}</span>
         <button className="iconBtn"
                 onClick={() => dispatch({ type: 'TOGGLE_SETTINGS' })}
@@ -261,7 +304,7 @@ export const render = (props) => {
 
 export const className = `
   top: 40px;
-  right: 40px;
+  left: 40px;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
   color: #fff;
   -webkit-font-smoothing: antialiased;
@@ -283,7 +326,11 @@ export const className = `
     justify-content: space-between;
     align-items: center;
     margin-bottom: 8px;
+    cursor: grab;
+    -webkit-user-select: none;
+    user-select: none;
   }
+  .header:active { cursor: grabbing; }
 
   .title {
     font-size: 10.5px;
