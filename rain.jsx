@@ -1,5 +1,3 @@
-const { useState, useEffect, useRef } = React
-
 const DEFAULT_LOCATIONS = [
   { id: 'sainte-lucie', name: 'Sainte-Lucie', lat: 46.13, lon: -74.30, tz: 'America/Montreal' }
 ]
@@ -13,7 +11,6 @@ const WINDOWS = [
 ]
 
 const CONFIG_KEY = 'rain-widget-config-v1'
-const REFRESH_MS = 6 * 60 * 60 * 1000
 
 const loadConfig = () => {
   try {
@@ -26,8 +23,13 @@ const loadConfig = () => {
   return { locations: DEFAULT_LOCATIONS, windowDays: 14 }
 }
 
-const saveConfig = (cfg) => {
-  try { localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg)) } catch (e) {}
+const saveConfig = (state) => {
+  try {
+    localStorage.setItem(CONFIG_KEY, JSON.stringify({
+      locations: state.locations,
+      windowDays: state.windowDays
+    }))
+  } catch (e) {}
 }
 
 const fmtDate = (d) => d.toISOString().slice(0, 10)
@@ -44,141 +46,195 @@ const buildUrl = (loc, days) => {
          `&daily=precipitation_sum&start_date=${fmtDate(start)}&end_date=${fmtDate(end)}&timezone=${tz}`
 }
 
-const fetchRain = async (loc, days) => {
-  const res = await fetch(buildUrl(loc, days))
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const data = await res.json()
-  const vals = (data && data.daily && data.daily.precipitation_sum) || []
-  return vals.reduce((a, b) => a + (b || 0), 0)
+const fetchRain = (loc, days) =>
+  fetch(buildUrl(loc, days))
+    .then(res => { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json() })
+    .then(data => {
+      const vals = (data && data.daily && data.daily.precipitation_sum) || []
+      return vals.reduce((a, b) => a + (b || 0), 0)
+    })
+
+const searchPlaces = (query) =>
+  fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=5&language=en&format=json`)
+    .then(res => res.ok ? res.json() : { results: [] })
+    .then(data => (data.results || []).map(r => ({
+      id: 'geo-' + r.id,
+      name: [r.name, r.admin1].filter(Boolean).join(', '),
+      sub: r.country_code || '',
+      lat: r.latitude,
+      lon: r.longitude,
+      tz: r.timezone || 'auto'
+    })))
+
+const fetchAll = (locations, days, dispatch) => {
+  locations.forEach(loc => {
+    fetchRain(loc, days)
+      .then(value => dispatch({ type: 'FETCH_OK', id: loc.id, value }))
+      .catch(err => dispatch({ type: 'FETCH_ERR', id: loc.id, error: err.message }))
+  })
 }
 
-const searchPlaces = async (query) => {
-  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=5&language=en&format=json`
-  const res = await fetch(url)
-  if (!res.ok) return []
-  const data = await res.json()
-  return (data.results || []).map(r => ({
-    id: `geo-${r.id}`,
-    name: [r.name, r.admin1].filter(Boolean).join(', '),
-    sub: r.country_code || '',
-    lat: r.latitude,
-    lon: r.longitude,
-    tz: r.timezone || 'auto'
-  }))
+let searchTimer = null
+const debouncedSearch = (query, dispatch) => {
+  if (searchTimer) clearTimeout(searchTimer)
+  if (!query.trim()) { dispatch({ type: 'SET_RESULTS', results: [] }); return }
+  searchTimer = setTimeout(() => {
+    searchPlaces(query).then(results => dispatch({ type: 'SET_RESULTS', results }))
+  }, 300)
 }
 
-const Drop = () => (
-  <svg width="11" height="14" viewBox="0 0 10 13" style={{ marginRight: 7, opacity: 0.55, verticalAlign: '-2px' }}>
-    <path d="M5 0.5 C5 0.5 0.6 5.2 0.6 8.2 a4.4 4.4 0 0 0 8.8 0 C9.4 5.2 5 0.5 5 0.5z"
-          fill="currentColor" />
-  </svg>
-)
+const _initial = loadConfig()
 
-const Widget = () => {
-  const [config, setConfig] = useState(loadConfig)
-  const [values, setValues] = useState({})
-  const [errors, setErrors] = useState({})
-  const [loading, setLoading] = useState(true)
-  const [showSettings, setShowSettings] = useState(false)
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState([])
-  const [searching, setSearching] = useState(false)
-  const cancelRef = useRef(0)
+export const refreshFrequency = 6 * 60 * 60 * 1000
 
-  const update = (next) => { setConfig(next); saveConfig(next) }
+export const initialState = {
+  locations: _initial.locations,
+  windowDays: _initial.windowDays,
+  values: {},
+  errors: {},
+  showSettings: false,
+  query: '',
+  results: []
+}
 
-  useEffect(() => {
-    const tag = ++cancelRef.current
-    setLoading(true)
-    const run = async () => {
-      const v = {}, e = {}
-      await Promise.all(config.locations.map(async (loc) => {
-        try { v[loc.id] = await fetchRain(loc, config.windowDays) }
-        catch (err) { e[loc.id] = err.message }
-      }))
-      if (tag !== cancelRef.current) return
-      setValues(v); setErrors(e); setLoading(false)
+export const command = (dispatch) => {
+  const cfg = loadConfig()
+  fetchAll(cfg.locations, cfg.windowDays, dispatch)
+}
+
+export const updateState = (event, state) => {
+  switch (event.type) {
+    case 'FETCH_OK': {
+      const values = Object.assign({}, state.values, { [event.id]: event.value })
+      const errors = Object.assign({}, state.errors); delete errors[event.id]
+      return Object.assign({}, state, { values, errors })
     }
-    run()
-    const t = setInterval(run, REFRESH_MS)
-    return () => clearInterval(t)
-  }, [JSON.stringify(config.locations), config.windowDays])
+    case 'FETCH_ERR': {
+      const errors = Object.assign({}, state.errors, { [event.id]: event.error })
+      const values = Object.assign({}, state.values); delete values[event.id]
+      return Object.assign({}, state, { values, errors })
+    }
+    case 'SET_WINDOW': {
+      const next = Object.assign({}, state, { windowDays: event.days, values: {}, errors: {} })
+      saveConfig(next); return next
+    }
+    case 'TOGGLE_SETTINGS':
+      return Object.assign({}, state, { showSettings: !state.showSettings, query: '', results: [] })
+    case 'SET_QUERY':
+      return Object.assign({}, state, { query: event.value })
+    case 'SET_RESULTS':
+      return Object.assign({}, state, { results: event.results })
+    case 'ADD_LOC': {
+      if (state.locations.some(l => l.id === event.loc.id)) return state
+      const next = Object.assign({}, state, {
+        locations: state.locations.concat([event.loc]),
+        query: '', results: [], values: {}, errors: {}
+      })
+      saveConfig(next); return next
+    }
+    case 'REMOVE_LOC': {
+      if (state.locations.length <= 1) return state
+      const next = Object.assign({}, state, {
+        locations: state.locations.filter(l => l.id !== event.id),
+        values: {}, errors: {}
+      })
+      saveConfig(next); return next
+    }
+    default:
+      return state
+  }
+}
 
-  useEffect(() => {
-    if (!query.trim()) { setResults([]); setSearching(false); return }
-    setSearching(true)
-    const t = setTimeout(async () => {
-      const r = await searchPlaces(query)
-      setResults(r); setSearching(false)
-    }, 300)
-    return () => clearTimeout(t)
-  }, [query])
+export const render = (props) => {
+  const dispatch = props.dispatch
+  const locations = props.locations || DEFAULT_LOCATIONS
+  const windowDays = props.windowDays || 14
+  const values = props.values || {}
+  const errors = props.errors || {}
+  const showSettings = !!props.showSettings
+  const query = props.query || ''
+  const results = props.results || []
+  const win = WINDOWS.find(w => w.days === windowDays) || WINDOWS[2]
 
-  const addLocation = (loc) => {
-    if (config.locations.find(l => l.id === loc.id)) return
-    update({ ...config, locations: [...config.locations, loc] })
-    setQuery(''); setResults([])
+  const onWindow = (days) => {
+    dispatch({ type: 'SET_WINDOW', days })
+    fetchAll(locations, days, dispatch)
+  }
+  const onAdd = (loc) => {
+    dispatch({ type: 'ADD_LOC', loc })
+    fetchAll(locations.concat([loc]).filter((l, i, a) => a.findIndex(x => x.id === l.id) === i), windowDays, dispatch)
+  }
+  const onRemove = (id) => {
+    dispatch({ type: 'REMOVE_LOC', id })
+    fetchAll(locations.filter(l => l.id !== id), windowDays, dispatch)
+  }
+  const onQuery = (e) => {
+    const value = e.target.value
+    dispatch({ type: 'SET_QUERY', value })
+    debouncedSearch(value, dispatch)
   }
 
-  const removeLocation = (id) => {
-    if (config.locations.length <= 1) return
-    update({ ...config, locations: config.locations.filter(l => l.id !== id) })
-  }
+  const drop = (
+    <svg width="11" height="14" viewBox="0 0 10 13"
+         style={{ marginRight: 7, opacity: 0.55, verticalAlign: '-2px' }}>
+      <path d="M5 0.5 C5 0.5 0.6 5.2 0.6 8.2 a4.4 4.4 0 0 0 8.8 0 C9.4 5.2 5 0.5 5 0.5z"
+            fill="currentColor" />
+    </svg>
+  )
 
-  const win = WINDOWS.find(w => w.days === config.windowDays) || WINDOWS[2]
+  const renderValue = (loc) => {
+    if (errors[loc.id]) return <span className="err" title={errors[loc.id]}>—</span>
+    if (values[loc.id] != null) {
+      return [
+        <span key="n" className="num">{Math.round(values[loc.id])}</span>,
+        <span key="u" className="unit"> mm</span>
+      ]
+    }
+    return <span className="dim">…</span>
+  }
 
   return (
     <div className="card">
       <div className="header">
-        <span className="title"><Drop />Precipitation · past {win.label}</span>
-        <button className="iconBtn" onClick={() => setShowSettings(s => !s)}
+        <span className="title">{drop}Precipitation · past {win.label}</span>
+        <button className="iconBtn"
+                onClick={() => dispatch({ type: 'TOGGLE_SETTINGS' })}
                 title={showSettings ? 'Close' : 'Settings'}>
           {showSettings ? '×' : '⚙'}
         </button>
       </div>
 
-      {!showSettings && (
+      {!showSettings ? (
         <div className="body">
           <div className="locations">
-            {config.locations.map(loc => {
-              const v = values[loc.id]
-              const err = errors[loc.id]
-              return (
-                <div className="locRow" key={loc.id}>
-                  <div className="locName">{loc.name}</div>
-                  <div className="locValue">
-                    {err ? <span className="err" title={err}>—</span>
-                      : v != null ? <><span className="num">{Math.round(v)}</span><span className="unit"> mm</span></>
-                      : loading ? <span className="dim">…</span>
-                      : <span className="dim">—</span>}
-                  </div>
-                </div>
-              )
-            })}
+            {locations.map(loc => (
+              <div className="locRow" key={loc.id}>
+                <div className="locName">{loc.name}</div>
+                <div className="locValue">{renderValue(loc)}</div>
+              </div>
+            ))}
           </div>
           <div className="windows">
             {WINDOWS.map(w => (
               <button key={w.days}
-                      className={`winBtn ${w.days === config.windowDays ? 'active' : ''}`}
-                      onClick={() => update({ ...config, windowDays: w.days })}>
+                      className={'winBtn' + (w.days === windowDays ? ' active' : '')}
+                      onClick={() => onWindow(w.days)}>
                 {w.label}
               </button>
             ))}
           </div>
         </div>
-      )}
-
-      {showSettings && (
+      ) : (
         <div className="settings">
           <div className="sectionLabel">Locations</div>
           <div className="locList">
-            {config.locations.map(loc => (
+            {locations.map(loc => (
               <div className="settingRow" key={loc.id}>
                 <div className="settingName">{loc.name}</div>
                 <div className="coord">{loc.lat.toFixed(2)}, {loc.lon.toFixed(2)}</div>
                 <button className="rmBtn"
-                        disabled={config.locations.length <= 1}
-                        onClick={() => removeLocation(loc.id)}
+                        disabled={locations.length <= 1}
+                        onClick={() => onRemove(loc.id)}
                         title="Remove">×</button>
               </div>
             ))}
@@ -186,12 +242,11 @@ const Widget = () => {
           <input className="search"
                  placeholder="Add a place…"
                  value={query}
-                 onChange={(e) => setQuery(e.target.value)} />
-          {(results.length > 0 || searching) && (
+                 onChange={onQuery} />
+          {results.length > 0 && (
             <div className="results">
-              {searching && results.length === 0 && <div className="resultRow dim">Searching…</div>}
               {results.map(r => (
-                <div className="resultRow" key={r.id} onClick={() => addLocation(r)}>
+                <div className="resultRow" key={r.id} onClick={() => onAdd(r)}>
                   <span>{r.name}</span>
                   <span className="resultSub">{r.sub}</span>
                 </div>
@@ -203,10 +258,6 @@ const Widget = () => {
     </div>
   )
 }
-
-export const refreshFrequency = false
-
-export const render = () => <Widget />
 
 export const className = `
   top: 40px;
@@ -273,15 +324,9 @@ export const className = `
     padding: 2px 0;
   }
 
-  .locName {
-    font-size: 13px;
-    opacity: 0.82;
-    font-weight: 400;
-  }
+  .locName { font-size: 13px; opacity: 0.82; font-weight: 400; }
 
-  .locValue {
-    font-variant-numeric: tabular-nums;
-  }
+  .locValue { font-variant-numeric: tabular-nums; }
   .locValue .num { font-size: 19px; font-weight: 500; letter-spacing: -0.01em; }
   .locValue .unit { font-size: 11px; opacity: 0.55; margin-left: 2px; }
   .locValue .dim { font-size: 16px; opacity: 0.4; }
@@ -310,11 +355,7 @@ export const className = `
   .winBtn:hover { background: rgba(255,255,255,0.07); color: #fff; }
   .winBtn.active { background: rgba(255,255,255,0.14); color: #fff; }
 
-  .settings {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
+  .settings { display: flex; flex-direction: column; gap: 8px; }
 
   .sectionLabel {
     font-size: 10px;
@@ -394,8 +435,6 @@ export const className = `
     transition: all 0.1s ease;
   }
   .resultRow:hover { background: rgba(255,255,255,0.09); opacity: 1; }
-  .resultRow.dim { opacity: 0.45; cursor: default; }
-  .resultRow.dim:hover { background: transparent; }
 
   .resultSub {
     font-size: 10px;
