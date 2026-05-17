@@ -27,15 +27,19 @@ cd ~/.rain_history_widget
 ```
 
 `install.sh` checks that Übersicht is installed (and offers to install it
-via Homebrew if not), then symlinks `rain.jsx` into Übersicht's widgets
+via Homebrew if not), then copies `rain.jsx` into Übersicht's widgets
 directory. The widget appears as soon as Übersicht picks it up — usually
 within a second.
+
+> Übersicht's file watcher ignores symlinks, so the installer uses a plain
+> copy. That means a bare `git pull` doesn't update the live widget — use
+> the `--update` flag below, which pulls *and* re-copies.
 
 To update later:
 
 ```sh
 cd ~/.rain_history_widget
-./install.sh --update      # git pull + refresh the symlink
+./install.sh --update      # git pull + re-copy
 ```
 
 To uninstall:
@@ -76,17 +80,11 @@ permissions, those aren't required for this widget; you can skip them.
 If you'd rather not run `install.sh`:
 
 ```sh
-ln -s "$PWD/rain.jsx" ~/Library/Application\ Support/Übersicht/widgets/rain.jsx
-```
-
-…or just copy the file:
-
-```sh
 cp rain.jsx ~/Library/Application\ Support/Übersicht/widgets/rain.jsx
 ```
 
-The symlink form lets you `git pull` to update. The copy form requires
-re-running `cp` each time.
+Re-run that `cp` after a `git pull` to update. (Symlinks don't work —
+Übersicht's file watcher ignores them.)
 
 ---
 

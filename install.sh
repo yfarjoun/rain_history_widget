@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #
-# Install (or refresh) the rain widget into Übersicht's widgets directory
-# as a symlink to this repo. After installation, run `git pull` in this
-# repo to update — the symlink picks up changes automatically.
+# Install (or refresh) the rain widget into Übersicht's widgets directory.
+# Übersicht's file watcher ignores symlinks, so this script copies the
+# file. To pick up changes from this repo, re-run with --update.
 #
 # Usage:
-#   ./install.sh           # install or refresh symlink
-#   ./install.sh --update  # git pull then refresh symlink
-#   ./install.sh --remove  # remove the installed symlink/copy
+#   ./install.sh           # install or refresh the copy
+#   ./install.sh --update  # git pull then refresh the copy
+#   ./install.sh --remove  # remove the installed widget
 #
 
 set -euo pipefail
@@ -53,18 +53,18 @@ remove_existing() {
   if [[ -L "$TARGET" ]]; then
     info "Removing existing symlink at $TARGET"
     rm "$TARGET"
-  elif [[ -f "$TARGET" ]]; then
+  elif [[ -f "$TARGET" ]] && ! cmp -s "$SOURCE" "$TARGET"; then
     local backup="$TARGET.backup-$(date +%Y%m%d-%H%M%S)"
-    warn "Existing file at $TARGET — backing up to $(basename "$backup")"
+    warn "Existing different file at $TARGET — backing up to $(basename "$backup")"
     mv "$TARGET" "$backup"
   fi
 }
 
-install_symlink() {
+install_widget() {
   mkdir -p "$WIDGETS_DIR"
   remove_existing
-  ln -s "$SOURCE" "$TARGET"
-  ok "Linked $WIDGET_FILE into $WIDGETS_DIR"
+  cp -f "$SOURCE" "$TARGET"
+  ok "Installed $WIDGET_FILE into $WIDGETS_DIR"
 }
 
 case "${1:-}" in
@@ -78,14 +78,14 @@ case "${1:-}" in
     require_macos
     info "Pulling latest changes…"
     git -C "$REPO_DIR" pull --ff-only
-    install_symlink
+    install_widget
     ok "Updated."
     exit 0
     ;;
   ""|--install)
     require_macos
     ensure_ubersicht
-    install_symlink
+    install_widget
     echo
     ok "Done. If Übersicht is running, the widget should appear within a second."
     echo "  Not running? Open Übersicht.app — its icon is in the menu bar."
