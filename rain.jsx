@@ -38,11 +38,12 @@ const fmtDate = (d) => d.toISOString().slice(0, 10)
 const buildUrl = (loc, days) => {
   const tz = encodeURIComponent(loc.tz || 'auto')
   if (days <= 92) {
+    const past = Math.max(0, days - 1)
     return `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}` +
-           `&daily=precipitation_sum&past_days=${days}&forecast_days=0&timezone=${tz}`
+           `&daily=precipitation_sum&past_days=${past}&forecast_days=1&timezone=${tz}`
   }
-  const end = new Date(); end.setDate(end.getDate() - 1)
-  const start = new Date(); start.setDate(start.getDate() - days)
+  const end = new Date()
+  const start = new Date(); start.setDate(start.getDate() - (days - 1))
   return `https://archive-api.open-meteo.com/v1/archive?latitude=${loc.lat}&longitude=${loc.lon}` +
          `&daily=precipitation_sum&start_date=${fmtDate(start)}&end_date=${fmtDate(end)}&timezone=${tz}`
 }
@@ -245,7 +246,7 @@ export const render = (a, b) => {
   return (
     <div className="card" ref={applyPosition}>
       <div className="header" onMouseDown={onDragStart} title="Drag to move">
-        <span className="title">{drop}Precipitation · past {win.label}</span>
+        <span className="title">{drop}Precipitation · last {win.label}</span>
         <button className="iconBtn"
                 onClick={() => dispatch({ type: 'TOGGLE_SETTINGS' })}
                 title={showSettings ? 'Close' : 'Settings'}>
