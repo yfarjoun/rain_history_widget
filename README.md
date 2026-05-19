@@ -4,7 +4,7 @@ An [Übersicht](https://tracesof.net/uebersicht/) widget that shows recent
 precipitation totals for one or more places on your macOS desktop, using
 [Open-Meteo](https://open-meteo.com/)'s free forecast + archive APIs.
 
-![Screenshot of the widget showing 7-day precipitation totals for Sainte-Lucie (24 mm, +5 mm net) and Montreal, Quebec (16 mm, −6 mm net), with window buttons 1d / 7d / 14d / 30d / 90d.](docs/screenshot.png)
+![Screenshot of the widget showing 7-day precipitation totals for Sainte-Lucie (24 mm, +5 mm net) and Montreal, Quebec (16 mm, −6 mm net), with window buttons 1d / 7d / 14d / 30d / 90d.](docs/screenshot.jpg)
 
 - **Multiple locations** — add any place via Open-Meteo's geocoding search;
   they stack in a single card.
