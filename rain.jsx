@@ -37,23 +37,28 @@ const fmtDate = (d) => d.toISOString().slice(0, 10)
 
 const buildUrl = (loc, days) => {
   const tz = encodeURIComponent(loc.tz || 'auto')
+  const fields = 'precipitation_sum,et0_fao_evapotranspiration'
   if (days <= 92) {
     const past = Math.max(0, days - 1)
     return `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}` +
-           `&daily=precipitation_sum&past_days=${past}&forecast_days=1&timezone=${tz}`
+           `&daily=${fields}&past_days=${past}&forecast_days=1&timezone=${tz}`
   }
   const end = new Date()
   const start = new Date(); start.setDate(start.getDate() - (days - 1))
   return `https://archive-api.open-meteo.com/v1/archive?latitude=${loc.lat}&longitude=${loc.lon}` +
-         `&daily=precipitation_sum&start_date=${fmtDate(start)}&end_date=${fmtDate(end)}&timezone=${tz}`
+         `&daily=${fields}&start_date=${fmtDate(start)}&end_date=${fmtDate(end)}&timezone=${tz}`
 }
+
+const sumArray = (arr) => (arr || []).reduce((a, b) => a + (b || 0), 0)
 
 const fetchRain = (loc, days) =>
   fetch(buildUrl(loc, days))
     .then(res => { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json() })
     .then(data => {
-      const vals = (data && data.daily && data.daily.precipitation_sum) || []
-      return vals.reduce((a, b) => a + (b || 0), 0)
+      const d = (data && data.daily) || {}
+      const rain = sumArray(d.precipitation_sum)
+      const et = sumArray(d.et0_fao_evapotranspiration)
+      return { rain, et, net: rain - et }
     })
 
 const searchPlaces = (query) =>
@@ -234,13 +239,19 @@ export const render = (a, b) => {
 
   const renderValue = (loc) => {
     if (errors[loc.id]) return <span className="err" title={errors[loc.id]}>—</span>
-    if (values[loc.id] != null) {
-      return [
-        <span key="n" className="num">{Math.round(values[loc.id])}</span>,
-        <span key="u" className="unit"> mm</span>
-      ]
-    }
-    return <span className="dim">…</span>
+    const v = values[loc.id]
+    if (v == null) return <span className="dim">…</span>
+    const rain = Math.round(v.rain != null ? v.rain : v)
+    const net = v.net
+    const netCls = net == null ? '' : (net < 0 ? ' deficit' : ' surplus')
+    const netStr = net == null ? '' : (net >= 0 ? '+' : '−') + Math.round(Math.abs(net)) + ' mm net'
+    return [
+      <div key="r" className="primary">
+        <span className="num">{rain}</span>
+        <span className="unit"> mm</span>
+      </div>,
+      net != null && <div key="n" className={'secondary' + netCls} title="Rain minus reference evapotranspiration (ET₀)">{netStr}</div>
+    ]
   }
 
   return (
@@ -374,15 +385,29 @@ export const className = `
   .locRow {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
-    padding: 2px 0;
+    align-items: flex-start;
+    padding: 3px 0;
   }
 
-  .locName { font-size: 13px; opacity: 0.82; font-weight: 400; }
+  .locName { font-size: 13px; opacity: 0.82; font-weight: 400; padding-top: 2px; }
 
-  .locValue { font-variant-numeric: tabular-nums; }
+  .locValue {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    font-variant-numeric: tabular-nums;
+  }
+  .locValue .primary { line-height: 1.1; }
   .locValue .num { font-size: 19px; font-weight: 500; letter-spacing: -0.01em; }
   .locValue .unit { font-size: 11px; opacity: 0.55; margin-left: 2px; }
+  .locValue .secondary {
+    font-size: 10.5px;
+    opacity: 0.55;
+    margin-top: 1px;
+    letter-spacing: 0.01em;
+  }
+  .locValue .secondary.deficit { color: #ffb085; opacity: 0.85; }
+  .locValue .secondary.surplus { color: #a7d8a7; opacity: 0.75; }
   .locValue .dim { font-size: 16px; opacity: 0.4; }
   .locValue .err { font-size: 16px; opacity: 0.4; color: #ff8a8a; }
 
