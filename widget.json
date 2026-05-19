@@ -1,6 +1,6 @@
 {
-  "name": "TODO: short widget name shown in the gallery (e.g. \"Rain History\")",
-  "description": "TODO: one short sentence, ideally one line. Keep it punchy.",
+  "name": "Rain History--for soil conditions",
+  "description": "Shows the net water accumulation to help monitor soil conditions for drought-sensitive plants.",
   "author": "Yossi Farjoun",
-  "email": "TODO: public email — use your real one or a GitHub no-reply (id+yfarjoun@users.noreply.github.com)"
+  "email": "yfarjoun@users.noreply.github.com"
 }
