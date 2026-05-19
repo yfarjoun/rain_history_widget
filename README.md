@@ -4,6 +4,8 @@ An [Übersicht](https://tracesof.net/uebersicht/) widget that shows recent
 precipitation totals for one or more places on your macOS desktop, using
 [Open-Meteo](https://open-meteo.com/)'s free forecast + archive APIs.
 
+![Screenshot of the widget showing 7-day precipitation totals for Sainte-Lucie (24 mm, +5 mm net) and Montreal, Quebec (16 mm, −6 mm net), with window buttons 1d / 7d / 14d / 30d / 90d.](docs/screenshot.png)
+
 - **Multiple locations** — add any place via Open-Meteo's geocoding search;
   they stack in a single card.
 - **Time-window picker** — 1d / 7d / 14d / 30d / 90d. Uses the forecast
@@ -15,6 +17,35 @@ precipitation totals for one or more places on your macOS desktop, using
   SF Pro typography, tabular numerals, hover/active states.
 
 Default location is Sainte-Lucie-des-Laurentides, QC (46.13°N, 74.30°W).
+
+---
+
+## Why another weather widget?
+
+Most Übersicht weather widgets answer **"what's the weather right now / coming
+up?"** — current conditions, an icon, an N-day forecast. This one answers a
+different question: **"how much has actually fallen lately, and was it enough
+to keep up with evaporation?"**
+
+- **Backward-looking, not forecast.** The primary number is the precipitation
+  total over a configurable window (1d to 90d via the forecast endpoint, longer
+  via the archive endpoint). Useful if you're tracking what your garden, lawn,
+  forest, or rain barrel has actually received — not what might happen
+  tomorrow.
+- **Rain minus ET₀ (climatic water balance).** Every total is paired with rain
+  minus the FAO reference evapotranspiration, colour-coded surplus/deficit.
+  This is the number that matters for irrigation planning, drought tracking,
+  and "do I need to water?" decisions, and it isn't shown anywhere else in the
+  gallery.
+- **Multi-location at-a-glance.** Locations stack in one compact card with
+  tabular-numeric alignment, so you can compare two places side by side
+  without flipping between widgets.
+- **No API key, no signup.** Uses Open-Meteo's free public endpoints. Most
+  existing widgets in the gallery depend on Dark Sky (shut down in 2023) or
+  require an OpenWeatherMap key.
+
+If you want current conditions, hourly forecasts, or a weather icon — there
+are several great existing widgets for that. This one is for the rain-curious.
 
 ---
 

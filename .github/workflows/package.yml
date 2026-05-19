@@ -1,0 +1,57 @@
+name: Package widget
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compare committed zip with rain.jsx
+        id: check
+        run: |
+          set -euo pipefail
+          if [[ ! -f rain.widget.zip ]]; then
+            echo "needs_rebuild=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mkdir -p /tmp/extracted
+          unzip -q rain.widget.zip -d /tmp/extracted
+          if diff -q rain.jsx /tmp/extracted/rain.widget/rain.jsx >/dev/null 2>&1; then
+            echo "needs_rebuild=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_rebuild=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rebuild rain.widget.zip
+        if: steps.check.outputs.needs_rebuild == 'true'
+        run: |
+          set -euo pipefail
+          rm -rf rain.widget rain.widget.zip
+          mkdir rain.widget
+          cp rain.jsx rain.widget/rain.jsx
+          zip -r rain.widget.zip rain.widget
+          rm -rf rain.widget
+
+      - name: Commit if changed
+        if: steps.check.outputs.needs_rebuild == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add rain.widget.zip
+          git commit -m "Rebuild rain.widget.zip from rain.jsx"
+          git push
